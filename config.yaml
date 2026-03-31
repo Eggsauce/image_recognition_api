@@ -1,0 +1,13 @@
+path: ./cvat #dataset root directory
+train: images/train #train images (relative to 'path')
+val: images/train #val images (relative to 'path')
+
+#Classes
+names:
+  0: mainpage_username_textfield
+  1: mainpage_login_button
+  2: security_word
+  3: security_image
+  4: security_confirm_button
+  5: password_textfield
+  6: password_login_button
