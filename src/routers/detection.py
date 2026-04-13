@@ -32,18 +32,43 @@ def detect_from_image_data(
 
         # Prefer explicit query parameter if provided; fall back to body field
         class_filter = target_class_name or req.class_name_path
+
+        # If user asks for one specific class but does not pass min_score,
+        # use a safer default to reduce low-confidence false positives.
+        effective_min_score = req.min_score
+        if class_filter is not None and effective_min_score is None:
+            effective_min_score = 0.25
+
         if class_filter is not None:
             detections = [
                 d for d in detections if d.get("class_name") == class_filter
             ]
-        if req.min_score is not None:
+        if effective_min_score is not None:
             detections = [d for d in detections if d.get(
-                "confidence", 0.0) >= float(req.min_score)]
+                "confidence", 0.0) >= float(effective_min_score)]
+
+        # Keep only one detection per class_name (highest confidence)
+        if detections:
+            best_by_class = {}
+            for d in detections:
+                class_name = d.get("class_name")
+                current_best = best_by_class.get(class_name)
+                if (
+                    current_best is None
+                    or d.get("confidence", 0.0) > current_best.get("confidence", 0.0)
+                ):
+                    best_by_class[class_name] = d
+            detections = list(best_by_class.values())
+
         if req.return_top and detections:
             detections = [
                 max(detections, key=lambda d: d.get("confidence", 0.0))]
 
         result["detections"] = detections
+        if class_filter is not None and not detections:
+            result["message"] = (
+                f'No "{class_filter}" detected in image with current thresholds.'
+            )
         return result
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
