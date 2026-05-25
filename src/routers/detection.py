@@ -3,12 +3,33 @@ from typing import Optional
 from detector import YoloDetector
 from models.api import DetectionImageData
 import os
+import asyncio
+import threading
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/detection", tags=["detection"])
 
+# Thread-safe global cache for YoloDetector instances
+# Key: (weights_path, classname_path, device)
+_detector_cache = {}
+_cache_lock = threading.Lock()
+
+def get_detector(weights_path: str, classname_path: Optional[str], device: Optional[str]) -> YoloDetector:
+    key = (weights_path, classname_path, device)
+    with _cache_lock:
+        if key not in _detector_cache:
+            _detector_cache[key] = YoloDetector(
+                weights_path=weights_path,
+                class_names_path=classname_path,
+                device=device
+            )
+        return _detector_cache[key]
+
 
 @router.post("/image-data")
-def detect_from_image_data(
+async def detect_from_image_data(
     req: DetectionImageData,
     target_class_name: Optional[str] = Query(
         default=None,
@@ -17,10 +38,24 @@ def detect_from_image_data(
 ):
     weights_path = os.getenv("WEIGHTS_PATH")
     classname_path = os.getenv("CLASSNAME_PATH")
+    
+    if not weights_path:
+        raise HTTPException(
+            status_code=400,
+            detail="WEIGHTS_PATH environment variable is not set"
+        )
+        
     try:
-        detector = YoloDetector(weights_path=weights_path,
-                                class_names_path=classname_path, device=req.device)
-        result = detector.detect_on_b64(
+        # Load or retrieve the detector asynchronously in a separate thread
+        detector = await asyncio.to_thread(
+            get_detector,
+            weights_path,
+            classname_path,
+            req.device
+        )
+        # Run model inference in a worker thread to keep FastAPI non-blocking
+        result = await asyncio.to_thread(
+            detector.detect_on_b64,
             image_b64=req.image_data,
             conf=req.conf,
             iou=req.iou,
@@ -71,9 +106,11 @@ def detect_from_image_data(
             )
         return result
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        logger.error("Resource not found: %s", e)
+        raise HTTPException(status_code=404, detail="Model or resource file not found.")
     except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Runtime error during detection: %s", e)
+        raise HTTPException(status_code=500, detail="Detection failed due to a runtime error.")
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Detection error: {str(e)}")
+        logger.exception("Unexpected error during detection: %s", e)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred during detection.")

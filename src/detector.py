@@ -6,6 +6,7 @@ import os
 import logging
 import base64
 import io
+import threading
 
 
 class YoloDetector:
@@ -22,10 +23,6 @@ class YoloDetector:
             logging.basicConfig(level=os.environ.get(
                 "YOLO_API_LOGLEVEL", "INFO"))
             # Logger (debugging) end
-        if YOLO is None:
-            raise RuntimeError(
-                "ultralytics package not installed. Install with: pip install ultralytics")
-
         if not os.path.exists(weights_path):
             raise FileNotFoundError(f"Weights not found at: {weights_path}")
         # Logger (debugging)
@@ -35,6 +32,7 @@ class YoloDetector:
         # Prefer names from model if available; fallback to obj.names file
         self.class_id_to_name = self._load_class_names(class_names_path)
         self.device = device  # let ultralytics auto-select if None
+        self._inference_lock = threading.Lock()
         # Logger (debugging)
         self.logger.info(
             f"Detector initialized. device={self.device or 'auto'}, classes={len(self.class_id_to_name) if self.class_id_to_name else 'unknown'}")
@@ -81,7 +79,7 @@ class YoloDetector:
         """Load a PIL Image from either a file path or a base64 string."""
         if image_b64 is not None:
             try:
-                image_bytes = base64.b64decode(image_b64)
+                image_bytes = base64.b64decode(image_b64, validate=True)
                 return Image.open(io.BytesIO(image_bytes)).convert('RGB')
             except Exception as e:
                 raise ValueError(f"Failed to decode base64 image: {e}")
@@ -112,7 +110,8 @@ class YoloDetector:
 
         self.logger.info(
             f"Detect source={image_source}, conf={conf}, device={self.device or 'auto'}")
-        results = self.model.predict(source=np.array(image), **predict_kwargs)
+        with self._inference_lock:
+            results = self.model.predict(source=np.array(image), **predict_kwargs)
 
         num_results = 0 if results is None else len(results)
         self.logger.debug(f"model.predict results={num_results}")
@@ -149,13 +148,17 @@ class YoloDetector:
                 num_boxes = 0
         self.logger.info(f"Boxes found={num_boxes}")
 
-        for i in range(len(boxes)):
-            xyxy = boxes.xyxy[i].cpu().numpy()
-            conf_score = float(boxes.conf[i].cpu().numpy())
-            cls_id = int(boxes.cls[i].cpu().numpy())
+        xyxy_all = boxes.xyxy.cpu().numpy()
+        conf_all = boxes.conf.cpu().numpy()
+        cls_all = boxes.cls.cpu().numpy()
+
+        for i in range(len(xyxy_all)):
+            xyxy = xyxy_all[i]
+            conf_score = float(conf_all[i])
+            cls_id = int(cls_all[i])
             cls_name = self.class_id_to_name.get(cls_id, str(cls_id))
 
-            x_min, y_min, x_max, y_max = [int(v) for v in xyxy.tolist()]
+            x_min, y_min, x_max, y_max = [round(v) for v in xyxy.tolist()]
             norm = self._to_normalized(xyxy, img_w, img_h)
 
             detections.append({

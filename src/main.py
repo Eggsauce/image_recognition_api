@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from dotenv import load_dotenv
 from routers.detection import router as detection_router
 import uvicorn
+import os
 
 load_dotenv()
 
@@ -15,7 +16,8 @@ app.include_router(detection_router)
 
 
 def main():
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    workers = int(os.getenv("WORKERS", os.cpu_count() or 1))
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, workers=workers)
 
 
 if __name__ == "__main__":

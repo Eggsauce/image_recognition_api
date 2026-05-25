@@ -1,7 +1,16 @@
 from ultralytics import YOLO
 
-# Create a new YOLO model from scratch (Load the model)
-model = YOLO("yolo11n.yaml")
+model = YOLO("yolo11n.pt")
 
-# Train the model using the 'coco8.yaml' dataset for 3 epochs (Use the model)
-results = model.train(data="config.yaml", epochs=10000)
+results = model.train(
+    data="config.yaml",
+    epochs=100,
+    hsv_h=0.01,
+    hsv_s=0.4,
+    hsv_v=0.4,
+    scale=0.3,
+    translate=0.1,
+    fliplr=0.0,
+    flipud=0.0,
+    mosaic=0.0,
+)
