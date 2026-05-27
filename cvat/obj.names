@@ -3,5 +3,9 @@ mainpage_login_button
 security_word
 security_image
 security_confirm_button
+security_question
+login_details
+password_please
 password_textfield
 password_login_button
+password_login_button_disabled
