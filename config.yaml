@@ -9,5 +9,9 @@ names:
   2: security_word
   3: security_image
   4: security_confirm_button
-  5: password_textfield
-  6: password_login_button
+  5: security_question
+  6: login_details
+  7: password_please
+  8: password_textfield
+  9: password_login_button
+  10: password_login_button_disabled
