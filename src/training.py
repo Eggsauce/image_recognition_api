@@ -1,10 +1,18 @@
 from ultralytics import YOLO
+from pathlib import Path
 
-model = YOLO("yolo11n.pt")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+MODEL_PATH = PROJECT_ROOT / "yolo11n.pt"
+DATA_CONFIG_PATH = PROJECT_ROOT / "config.yaml"
+RUNS_DIR = PROJECT_ROOT / "runs" / "detect"
+
+model = YOLO(str(MODEL_PATH))
 # model = YOLO(".\\best.pt")
 
 results = model.train(
-    data="config.yaml",
+    data=str(DATA_CONFIG_PATH),
+    project=str(RUNS_DIR),
+    name="train",
     epochs=100,
     hsv_h=0.01,
     hsv_s=0.4,
